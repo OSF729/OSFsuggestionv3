@@ -70,6 +70,22 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .error-message {
+            color: #dc2626;
+            background-color: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 8px 0;
+        }
+        .success-message {
+            color: #059669;
+            background-color: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 8px 0;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -351,55 +367,137 @@
             loadInitialData();
         };
 
-        // 초기 데이터 로드
-        async function loadInitialData() {
-            try {
-                await loadSuggestionsCount();
-                await loadRecentSuggestions();
-            } catch (error) {
-                console.error('데이터 로드 오류:', error);
-                // Firebase 연결 확인
-                document.getElementById('recent-suggestions').innerHTML = `
-                    <div class="text-center py-8">
-                        <div class="text-green-500 mb-2">✅</div>
-                        <p class="text-green-600 font-medium">Firebase 연결 성공!</p>
-                        <p class="text-gray-500 text-sm">첫 번째 건의사항을 작성해보세요</p>
+        // 오류 표시 함수
+        function showError(message, containerId = 'recent-suggestions') {
+            const container = document.getElementById(containerId);
+            if (container) {
+                container.innerHTML = `
+                    <div class="error-message">
+                        <div class="flex items-center space-x-2">
+                            <span>⚠️</span>
+                            <span class="font-medium">오류가 발생했습니다</span>
+                        </div>
+                        <p class="text-sm mt-1">${message}</p>
+                        <button onclick="loadInitialData()" class="mt-2 text-sm underline hover:no-underline">다시 시도</button>
                     </div>
                 `;
             }
         }
 
-        // 건의사항 개수 로드
+        // 성공 메시지 표시 함수
+        function showSuccess(message, containerId = 'recent-suggestions') {
+            const container = document.getElementById(containerId);
+            if (container) {
+                container.innerHTML = `
+                    <div class="success-message">
+                        <div class="flex items-center space-x-2">
+                            <span>✅</span>
+                            <span class="font-medium">연결 성공</span>
+                        </div>
+                        <p class="text-sm mt-1">${message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 초기 데이터 로드
+        async function loadInitialData() {
+            try {
+                // Firebase 연결 테스트
+                if (!window.firebaseDB || !window.firebaseDB.db) {
+                    throw new Error('Firebase가 아직 초기화되지 않았습니다. 잠시 후 다시 시도해주세요.');
+                }
+
+                console.log('Firebase 연결 확인됨');
+                
+                // 병렬로 데이터 로드
+                const [countResult, recentResult] = await Promise.allSettled([
+                    loadSuggestionsCount(),
+                    loadRecentSuggestions()
+                ]);
+
+                // 개수 로드 실패 시 기본값 설정
+                if (countResult.status === 'rejected') {
+                    console.warn('개수 로드 실패:', countResult.reason);
+                    setDefaultCounts();
+                }
+
+                // 최근 건의사항 로드 실패 시 처리
+                if (recentResult.status === 'rejected') {
+                    console.warn('최근 건의사항 로드 실패:', recentResult.reason);
+                    showNoDataMessage();
+                }
+
+            } catch (error) {
+                console.error('초기 데이터 로드 오류:', error);
+                showError(error.message || 'Firebase 연결에 문제가 있습니다. 네트워크 연결을 확인해주세요.');
+            }
+        }
+
+        // 기본 개수 설정
+        function setDefaultCounts() {
+            const boards = ['team', 'company', 'complaint', 'product'];
+            boards.forEach(board => {
+                const countElement = document.getElementById(`${board}-count`);
+                if (countElement) {
+                    countElement.textContent = '0건';
+                }
+            });
+        }
+
+        // 데이터 없음 메시지 표시
+        function showNoDataMessage() {
+            showSuccess('Firebase에 성공적으로 연결되었습니다. 첫 번째 건의사항을 작성해보세요!');
+        }
+
+        // 건의사항 개수 로드 (개선된 오류 처리)
         async function loadSuggestionsCount() {
             const boards = ['team', 'company', 'complaint', 'product'];
             
             for (const board of boards) {
                 try {
                     const { db, collection, getDocs } = window.firebaseDB;
-                    const querySnapshot = await getDocs(collection(db, board));
+                    const collectionRef = collection(db, board);
+                    const querySnapshot = await getDocs(collectionRef);
                     const count = querySnapshot.size;
-                    document.getElementById(`${board}-count`).textContent = `${count}건`;
+                    
+                    const countElement = document.getElementById(`${board}-count`);
+                    if (countElement) {
+                        countElement.textContent = `${count}건`;
+                    }
+                    
+                    console.log(`${board} 컬렉션: ${count}건`);
                 } catch (error) {
-                    // 컬렉션이 없는 경우 0건으로 표시
-                    console.log(`${board} 컬렉션이 아직 없습니다:`, error.message);
-                    document.getElementById(`${board}-count`).textContent = '0건';
+                    console.log(`${board} 컬렉션 로드 실패:`, error.message);
+                    const countElement = document.getElementById(`${board}-count`);
+                    if (countElement) {
+                        countElement.textContent = '0건';
+                    }
                 }
             }
         }
 
-        // 최근 건의사항 로드
+        // 최근 건의사항 로드 (개선된 오류 처리)
         async function loadRecentSuggestions() {
             const recentContainer = document.getElementById('recent-suggestions');
             
+            if (!recentContainer) {
+                console.error('recent-suggestions 요소를 찾을 수 없습니다.');
+                return;
+            }
+
             try {
                 const { db, collection, getDocs, query, orderBy } = window.firebaseDB;
                 const boards = ['team', 'company', 'complaint', 'product'];
                 let allSuggestions = [];
+                let hasAnyData = false;
 
                 for (const board of boards) {
                     try {
-                        const q = query(collection(db, board), orderBy('createdAt', 'desc'));
+                        const collectionRef = collection(db, board);
+                        const q = query(collectionRef, orderBy('createdAt', 'desc'));
                         const querySnapshot = await getDocs(q);
+                        
                         querySnapshot.forEach((doc) => {
                             const data = doc.data();
                             allSuggestions.push({
@@ -407,64 +505,89 @@
                                 board: board,
                                 ...data
                             });
+                            hasAnyData = true;
                         });
                     } catch (boardError) {
-                        // 개별 컬렉션이 없는 경우는 무시하고 계속 진행
-                        console.log(`${board} 컬렉션이 아직 없습니다`);
+                        console.log(`${board} 컬렉션 조회 실패:`, boardError.message);
                     }
                 }
 
                 // 날짜순 정렬 후 최근 5개만
                 allSuggestions.sort((a, b) => {
-                    const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
-                    const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-                    return dateB - dateA;
+                    try {
+                        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+                        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+                        return dateB - dateA;
+                    } catch (dateError) {
+                        console.warn('날짜 정렬 오류:', dateError);
+                        return 0;
+                    }
                 });
+                
                 const recentSuggestions = allSuggestions.slice(0, 5);
 
-                if (recentSuggestions.length === 0) {
-                    recentContainer.innerHTML = `
-                        <div class="text-center py-8">
-                            <div class="text-green-500 mb-2">✅</div>
-                            <p class="text-green-600 font-medium">Firebase 연결 성공!</p>
-                            <p class="text-gray-500">아직 건의사항이 없습니다</p>
-                            <p class="text-gray-400 text-sm">첫 번째 건의사항을 작성해보세요!</p>
-                        </div>
-                    `;
+                if (!hasAnyData || recentSuggestions.length === 0) {
+                    showSuccess('Firebase에 성공적으로 연결되었습니다. 첫 번째 건의사항을 작성해보세요!');
                 } else {
-                    recentContainer.innerHTML = recentSuggestions.map(item => `
-                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div class="flex-1">
-                                <div class="flex items-center space-x-2">
-                                    <h4 class="font-medium text-gray-800">${item.title}</h4>
-                                    ${!isAdmin ? '<span class="icon">🔒</span>' : ''}
+                    recentContainer.innerHTML = recentSuggestions.map(item => {
+                        try {
+                            return `
+                                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2">
+                                            <h4 class="font-medium text-gray-800">${escapeHtml(item.title || '제목 없음')}</h4>
+                                            ${!isAdmin ? '<span class="icon">🔒</span>' : ''}
+                                        </div>
+                                        ${isAdmin ? `<p class="text-sm text-gray-600 mt-1">${escapeHtml((item.preview || item.content || '').substring(0, 50))}${(item.content && item.content.length > 50) ? '...' : ''}</p>` : ''}
+                                    </div>
+                                    <div class="text-right ml-4">
+                                        <span class="inline-block px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status || '접수')}">${escapeHtml(item.status || '접수')}</span>
+                                        <p class="text-xs text-gray-500 mt-1">${formatDate(item.createdAt)}</p>
+                                    </div>
                                 </div>
-                                ${isAdmin ? `<p class="text-sm text-gray-600 mt-1">${item.preview || item.content.substring(0, 50) + '...'}</p>` : ''}
-                            </div>
-                            <div class="text-right ml-4">
-                                <span class="inline-block px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status || '접수')}">${item.status || '접수'}</span>
-                                <p class="text-xs text-gray-500 mt-1">${formatDate(item.createdAt)}</p>
-                            </div>
-                        </div>
-                    `).join('');
+                            `;
+                        } catch (itemError) {
+                            console.warn('아이템 렌더링 오류:', itemError);
+                            return '<div class="p-3 bg-red-50 rounded-lg text-red-600">데이터 표시 오류</div>';
+                        }
+                    }).join('');
                 }
             } catch (error) {
-                console.log('최근 건의사항 로드:', error.message);
-                recentContainer.innerHTML = `
-                    <div class="text-center py-8">
-                        <div class="text-green-500 mb-2">✅</div>
-                        <p class="text-green-600 font-medium">Firebase 연결 성공!</p>
-                        <p class="text-gray-500">아직 건의사항이 없습니다</p>
-                        <p class="text-gray-400 text-sm">첫 번째 건의사항을 작성해보세요!</p>
-                    </div>
-                `;
+                console.error('최근 건의사항 로드 실패:', error);
+                
+                if (error.code === 'permission-denied') {
+                    showError('Firebase 보안 규칙으로 인해 데이터에 접근할 수 없습니다. 관리자에게 문의하세요.');
+                } else if (error.code === 'unavailable') {
+                    showError('Firebase 서버에 연결할 수 없습니다. 네트워크 연결을 확인하고 다시 시도해주세요.');
+                } else {
+                    showError(`데이터 로드 중 오류가 발생했습니다: ${error.message}`);
+                }
             }
         }
 
-        // 특정 게시판의 건의사항 로드
+        // HTML 이스케이프 함수
+        function escapeHtml(text) {
+            if (!text) return '';
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+
+        // 특정 게시판의 건의사항 로드 (개선된 오류 처리)
         async function loadBoardSuggestions(boardId) {
             const suggestionsList = document.getElementById('suggestions-list');
+            const suggestionCount = document.getElementById('suggestion-count');
             
+            if (!suggestionsList) {
+                console.error('suggestions-list 요소를 찾을 수 없습니다.');
+                return;
+            }
+
             // 로딩 표시
             suggestionsList.innerHTML = `
                 <div class="text-center py-8">
@@ -474,22 +597,33 @@
             `;
 
             try {
+                // Firebase 연결 확인
+                if (!window.firebaseDB || !window.firebaseDB.db) {
+                    throw new Error('Firebase가 초기화되지 않았습니다.');
+                }
+
                 const { db, collection, getDocs, query, orderBy } = window.firebaseDB;
                 
-                // 컬렉션이 존재하는지 먼저 확인
                 const collectionRef = collection(db, boardId);
                 const q = query(collectionRef, orderBy('createdAt', 'desc'));
                 const querySnapshot = await getDocs(q);
                 
                 const suggestions = [];
                 querySnapshot.forEach((doc) => {
-                    suggestions.push({
-                        id: doc.id,
-                        ...doc.data()
-                    });
+                    try {
+                        const data = doc.data();
+                        suggestions.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    } catch (docError) {
+                        console.warn('문서 처리 오류:', docError);
+                    }
                 });
 
-                document.getElementById('suggestion-count').textContent = suggestions.length;
+                if (suggestionCount) {
+                    suggestionCount.textContent = suggestions.length;
+                }
                 
                 if (suggestions.length === 0) {
                     suggestionsList.innerHTML = `
@@ -500,35 +634,45 @@
                         </div>
                     `;
                 } else {
-                    suggestionsList.innerHTML = suggestions.map(item => `
-                        <div class="p-4 hover:bg-gray-50 cursor-pointer transition-colors" onclick="handleSuggestionClick('${boardId}', '${item.id}')">
-                            <div class="flex items-start justify-between">
-                                <div class="flex-1">
-                                    <div class="flex items-center space-x-2 mb-2">
-                                        <h3 class="font-medium text-gray-800">${item.title}</h3>
-                                        ${!isAdmin ? '<span class="icon">🔒</span>' : ''}
-                                    </div>
-                                    ${isAdmin ? `<p class="text-gray-600 text-sm mb-3">${item.preview || item.content.substring(0, 50) + '...'}</p>` : ''}
-                                    <div class="flex items-center space-x-4 text-sm text-gray-500">
-                                        <div class="flex items-center space-x-1">
-                                            <span>👤</span>
-                                            <span>${item.author}</span>
+                    suggestionsList.innerHTML = suggestions.map(item => {
+                        try {
+                            return `
+                                <div class="p-4 hover:bg-gray-50 cursor-pointer transition-colors" onclick="handleSuggestionClick('${boardId}', '${item.id}')">
+                                    <div class="flex items-start justify-between">
+                                        <div class="flex-1">
+                                            <div class="flex items-center space-x-2 mb-2">
+                                                <h3 class="font-medium text-gray-800">${escapeHtml(item.title || '제목 없음')}</h3>
+                                                ${!isAdmin ? '<span class="icon">🔒</span>' : ''}
+                                            </div>
+                                            ${isAdmin ? `<p class="text-gray-600 text-sm mb-3">${escapeHtml((item.preview || item.content || '').substring(0, 50))}${(item.content && item.content.length > 50) ? '...' : ''}</p>` : ''}
+                                            <div class="flex items-center space-x-4 text-sm text-gray-500">
+                                                <div class="flex items-center space-x-1">
+                                                    <span>👤</span>
+                                                    <span>${escapeHtml(item.author || '익명')}</span>
+                                                </div>
+                                                <div class="flex items-center space-x-1">
+                                                    <span>🕒</span>
+                                                    <span>${formatDate(item.createdAt)}</span>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div class="flex items-center space-x-1">
-                                            <span>🕒</span>
-                                            <span>${formatDate(item.createdAt)}</span>
-                                        </div>
+                                        <span class="px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status || '접수')}">${escapeHtml(item.status || '접수')}</span>
                                     </div>
                                 </div>
-                                <span class="px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status || '접수')}">${item.status || '접수'}</span>
-                            </div>
-                        </div>
-                    `).join('');
+                            `;
+                        } catch (itemError) {
+                            console.warn('아이템 렌더링 오류:', itemError);
+                            return '<div class="p-4 bg-red-50 text-red-600">데이터 표시 오류</div>';
+                        }
+                    }).join('');
                 }
             } catch (error) {
                 console.error('게시판 건의사항 로드 오류:', error);
                 
-                // 빈 컬렉션이거나 권한 오류인 경우
+                if (suggestionCount) {
+                    suggestionCount.textContent = '0';
+                }
+                
                 if (error.code === 'permission-denied') {
                     suggestionsList.innerHTML = `
                         <div class="text-center py-8">
@@ -537,9 +681,16 @@
                             <p class="text-gray-500 text-sm">Firebase 보안 규칙을 확인해주세요</p>
                         </div>
                     `;
+                } else if (error.code === 'unavailable') {
+                    suggestionsList.innerHTML = `
+                        <div class="text-center py-8">
+                            <div class="text-red-500 mb-2">🌐</div>
+                            <p class="text-red-600 font-medium">네트워크 연결 오류</p>
+                            <p class="text-gray-500 text-sm">인터넷 연결을 확인하고 다시 시도해주세요</p>
+                            <button onclick="loadBoardSuggestions('${boardId}')" class="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">다시 시도</button>
+                        </div>
+                    `;
                 } else {
-                    // 일반적인 경우 - 빈 컬렉션으로 처리
-                    document.getElementById('suggestion-count').textContent = '0';
                     suggestionsList.innerHTML = `
                         <div class="text-center py-8">
                             <div class="text-blue-500 mb-2">📝</div>
@@ -551,59 +702,101 @@
             }
         }
 
-        // 건의사항 저장
+        // 건의사항 저장 (개선된 오류 처리)
         async function saveSuggestion(suggestionData) {
             try {
+                if (!window.firebaseDB || !window.firebaseDB.db) {
+                    throw new Error('Firebase가 초기화되지 않았습니다.');
+                }
+
                 const { db, collection, addDoc } = window.firebaseDB;
                 
                 const docData = {
                     ...suggestionData,
                     createdAt: new Date(),
                     status: '접수',
-                    preview: suggestionData.content.substring(0, 50) + '...'
+                    preview: (suggestionData.content || '').substring(0, 50) + ((suggestionData.content || '').length > 50 ? '...' : '')
                 };
 
                 const docRef = await addDoc(collection(db, suggestionData.board), docData);
+                console.log('건의사항 저장 성공:', docRef.id);
                 return docRef.id;
             } catch (error) {
                 console.error('건의사항 저장 오류:', error);
-                throw error;
+                
+                if (error.code === 'permission-denied') {
+                    throw new Error('건의사항을 저장할 권한이 없습니다. 관리자에게 문의하세요.');
+                } else if (error.code === 'unavailable') {
+                    throw new Error('네트워크 연결이 불안정합니다. 다시 시도해주세요.');
+                } else {
+                    throw new Error(`저장 중 오류가 발생했습니다: ${error.message}`);
+                }
             }
         }
 
-        // 건의사항 상세 정보 로드
+        // 건의사항 상세 정보 로드 (개선된 오류 처리)
         async function loadSuggestionDetail(boardId, suggestionId) {
             try {
+                if (!window.firebaseDB || !window.firebaseDB.db) {
+                    throw new Error('Firebase가 초기화되지 않았습니다.');
+                }
+
                 const { db, doc, getDoc } = window.firebaseDB;
                 const docRef = doc(db, boardId, suggestionId);
                 const docSnap = await getDoc(docRef);
                 
                 if (docSnap.exists()) {
+                    console.log('건의사항 상세 로드 성공');
                     return { id: docSnap.id, ...docSnap.data() };
                 } else {
-                    throw new Error('건의사항을 찾을 수 없습니다');
+                    throw new Error('건의사항을 찾을 수 없습니다. 삭제되었거나 존재하지 않는 항목입니다.');
                 }
             } catch (error) {
                 console.error('건의사항 상세 로드 오류:', error);
-                throw error;
+                
+                if (error.code === 'permission-denied') {
+                    throw new Error('건의사항을 열람할 권한이 없습니다.');
+                } else if (error.code === 'unavailable') {
+                    throw new Error('네트워크 연결이 불안정합니다. 다시 시도해주세요.');
+                } else {
+                    throw error;
+                }
             }
         }
 
-        // 상태 업데이트
+        // 상태 업데이트 (개선된 오류 처리)
         async function updateSuggestionStatus(boardId, suggestionId, newStatus) {
             try {
+                if (!window.firebaseDB || !window.firebaseDB.db) {
+                    throw new Error('Firebase가 초기화되지 않았습니다.');
+                }
+
                 const { db, doc, updateDoc } = window.firebaseDB;
                 const docRef = doc(db, boardId, suggestionId);
                 await updateDoc(docRef, { status: newStatus });
+                console.log('상태 업데이트 성공:', newStatus);
             } catch (error) {
                 console.error('상태 업데이트 오류:', error);
-                throw error;
+                
+                if (error.code === 'permission-denied') {
+                    throw new Error('상태를 변경할 권한이 없습니다.');
+                } else if (error.code === 'not-found') {
+                    throw new Error('건의사항을 찾을 수 없습니다.');
+                } else if (error.code === 'unavailable') {
+                    throw new Error('네트워크 연결이 불안정합니다. 다시 시도해주세요.');
+                } else {
+                    throw new Error(`상태 업데이트 중 오류가 발생했습니다: ${error.message}`);
+                }
             }
         }
 
-        // 답변 저장/업데이트
+        // 답변 저장/업데이트 (개선된 오류 처리)
         async function saveReply(boardId, suggestionId, replyData) {
             try {
+                if (!window.firebaseDB || !window.firebaseDB.db) {
+                    throw new Error('Firebase가 초기화되지 않았습니다.');
+                }
+
                 const { db, doc, updateDoc } = window.firebaseDB;
                 const docRef = doc(db, boardId, suggestionId);
                 
@@ -614,9 +807,19 @@
                 };
 
                 await updateDoc(docRef, updateData);
+                console.log('답변 저장 성공');
             } catch (error) {
                 console.error('답변 저장 오류:', error);
-                throw error;
+                
+                if (error.code === 'permission-denied') {
+                    throw new Error('답변을 저장할 권한이 없습니다.');
+                } else if (error.code === 'not-found') {
+                    throw new Error('건의사항을 찾을 수 없습니다.');
+                } else if (error.code === 'unavailable') {
+                    throw new Error('네트워크 연결이 불안정합니다. 다시 시도해주세요.');
+                } else {
+                    throw new Error(`답변 저장 중 오류가 발생했습니다: ${error.message}`);
+                }
             }
         }
 
@@ -707,10 +910,12 @@
             };
 
             const info = boardInfo[boardId];
-            document.getElementById('board-title').textContent = info.name;
-            document.getElementById('board-icon').innerHTML = `<span class="text-white">${info.icon}</span>`;
-            document.getElementById('board-icon').className = `p-2 rounded-full ${info.color}`;
-            document.getElementById('form-board').value = boardId;
+            if (info) {
+                document.getElementById('board-title').textContent = info.name;
+                document.getElementById('board-icon').innerHTML = `<span class="text-white">${info.icon}</span>`;
+                document.getElementById('board-icon').className = `p-2 rounded-full ${info.color}`;
+                document.getElementById('form-board').value = boardId;
+            }
 
             loadBoardSuggestions(boardId);
         }
@@ -731,10 +936,10 @@
             currentSuggestion = { ...suggestion, boardId };
 
             // 상세 정보 표시
-            document.getElementById('detail-title').textContent = suggestion.title;
-            document.getElementById('detail-author').textContent = suggestion.author;
+            document.getElementById('detail-title').textContent = suggestion.title || '제목 없음';
+            document.getElementById('detail-author').textContent = suggestion.author || '익명';
             document.getElementById('detail-date').textContent = formatDate(suggestion.createdAt);
-            document.getElementById('detail-content').innerHTML = `<p class="text-gray-700 leading-relaxed whitespace-pre-wrap">${suggestion.content}</p>`;
+            document.getElementById('detail-content').innerHTML = `<p class="text-gray-700 leading-relaxed whitespace-pre-wrap">${escapeHtml(suggestion.content || '')}</p>`;
 
             // 상태 업데이트
             const statusBadge = document.getElementById('status-badge');
@@ -768,8 +973,8 @@
                 replyForm.style.display = 'none';
                 replyBtn.style.display = 'none';
 
-                document.getElementById('reply-content').textContent = suggestion.reply.content;
-                document.getElementById('reply-author').textContent = `- ${suggestion.reply.author}`;
+                document.getElementById('reply-content').textContent = suggestion.reply.content || '';
+                document.getElementById('reply-author').textContent = `- ${suggestion.reply.author || '담당자'}`;
                 document.getElementById('reply-date').textContent = formatDate(suggestion.reply.createdAt);
 
                 editReplyBtn.style.display = isAdmin ? 'block' : 'none';
@@ -792,7 +997,7 @@
             replyBtn.style.display = 'none';
 
             if (currentSuggestion.reply) {
-                replyTextarea.value = currentSuggestion.reply.content;
+                replyTextarea.value = currentSuggestion.reply.content || '';
                 replySaveText.textContent = '답변 수정';
             } else {
                 replyTextarea.value = '';
@@ -914,7 +1119,7 @@
                 alert('건의사항이 성공적으로 등록되었습니다!');
                 showMain();
             } catch (error) {
-                alert('건의사항 등록 중 오류가 발생했습니다. 다시 시도해주세요.');
+                alert(error.message || '건의사항 등록 중 오류가 발생했습니다. 다시 시도해주세요.');
                 console.error('폼 제출 오류:', error);
             } finally {
                 // 로딩 상태 해제
@@ -938,8 +1143,10 @@
                 
                 alert('상태가 업데이트되었습니다.');
             } catch (error) {
-                alert('상태 업데이트 중 오류가 발생했습니다.');
+                alert(error.message || '상태 업데이트 중 오류가 발생했습니다.');
                 console.error('상태 변경 오류:', error);
+                // 원래 상태로 되돌리기
+                document.getElementById('status-select').value = currentSuggestion.status || '접수';
             }
         }
 
@@ -984,7 +1191,7 @@
 
                 alert('답변이 등록되었습니다!');
             } catch (error) {
-                alert('답변 저장 중 오류가 발생했습니다.');
+                alert(error.message || '답변 저장 중 오류가 발생했습니다.');
                 console.error('답변 저장 오류:', error);
             } finally {
                 // 로딩 상태 해제
@@ -1034,7 +1241,7 @@
                     document.getElementById('suggestion-password').value = '';
                 }
             } catch (error) {
-                alert('건의사항을 불러오는 중 오류가 발생했습니다.');
+                alert(error.message || '건의사항을 불러오는 중 오류가 발생했습니다.');
                 console.error('비밀번호 확인 오류:', error);
             }
         }
@@ -1044,7 +1251,7 @@
                 const suggestion = await loadSuggestionDetail(boardId, suggestionId);
                 showDetail(suggestion, boardId);
             } catch (error) {
-                alert('건의사항을 불러오는 중 오류가 발생했습니다.');
+                alert(error.message || '건의사항을 불러오는 중 오류가 발생했습니다.');
                 console.error('건의사항 로드 오류:', error);
             }
         }
@@ -1067,23 +1274,62 @@
         }
 
         function formatDate(timestamp) {
-            if (!timestamp) return '';
+            if (!timestamp) return '날짜 없음';
             
-            let date;
-            if (timestamp.toDate) {
-                // Firestore Timestamp
-                date = timestamp.toDate();
-            } else if (timestamp instanceof Date) {
-                date = timestamp;
-            } else {
-                date = new Date(timestamp);
+            try {
+                let date;
+                if (timestamp.toDate) {
+                    // Firestore Timestamp
+                    date = timestamp.toDate();
+                } else if (timestamp instanceof Date) {
+                    date = timestamp;
+                } else {
+                    date = new Date(timestamp);
+                }
+                
+                // 유효한 날짜인지 확인
+                if (isNaN(date.getTime())) {
+                    return '잘못된 날짜';
+                }
+                
+                return date.toLocaleDateString('ko-KR');
+            } catch (error) {
+                console.warn('날짜 포맷 오류:', error);
+                return '날짜 오류';
             }
-            
-            return date.toLocaleDateString('ko-KR');
         }
 
         // 전역 함수로 등록 (HTML onclick에서 사용)
         window.handleSuggestionClick = handleSuggestionClick;
+        window.loadInitialData = loadInitialData;
+        window.loadBoardSuggestions = loadBoardSuggestions;
+
+        // Firebase 초기화 지연 처리
+        let initRetryCount = 0;
+        const maxRetries = 5;
+
+        function checkFirebaseInit() {
+            if (window.firebaseDB && window.firebaseDB.db) {
+                console.log('Firebase 초기화 완료');
+                loadInitialData();
+            } else if (initRetryCount < maxRetries) {
+                initRetryCount++;
+                console.log(`Firebase 초기화 대기 중... (${initRetryCount}/${maxRetries})`);
+                setTimeout(checkFirebaseInit, 1000);
+            } else {
+                console.error('Firebase 초기화 실패');
+                showError('Firebase 연결에 실패했습니다. 페이지를 새로고침해주세요.');
+            }
+        }
+
+        // DOM이 준비되면 Firebase 초기화 확인
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                setTimeout(checkFirebaseInit, 100);
+            });
+        } else {
+            setTimeout(checkFirebaseInit, 100);
+        }
     </script>
 </body>
 </html>
