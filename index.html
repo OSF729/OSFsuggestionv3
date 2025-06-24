@@ -636,8 +636,17 @@
                 } else {
                     suggestionsList.innerHTML = suggestions.map(item => {
                         try {
+                            // 안전한 ID 처리
+                            const safeId = item.id ? item.id.replace(/'/g, "\\'") : '';
+                            const safeBoardId = boardId ? boardId.replace(/'/g, "\\'") : '';
+                            
+                            if (!safeId || !safeBoardId) {
+                                console.warn('ID가 누락된 항목:', item);
+                                return '<div class="p-4 bg-yellow-50 text-yellow-600">데이터 오류: ID가 누락되었습니다</div>';
+                            }
+
                             return `
-                                <div class="p-4 hover:bg-gray-50 cursor-pointer transition-colors" onclick="handleSuggestionClick('${boardId}', '${item.id}')">
+                                <div class="p-4 hover:bg-gray-50 cursor-pointer transition-colors" onclick="handleSuggestionClick('${safeBoardId}', '${safeId}')">
                                     <div class="flex items-start justify-between">
                                         <div class="flex-1">
                                             <div class="flex items-center space-x-2 mb-2">
@@ -1202,6 +1211,15 @@
         }
 
         function handleSuggestionClick(boardId, suggestionId) {
+            // 매개변수 유효성 검사
+            if (!boardId || !suggestionId) {
+                console.error('잘못된 매개변수:', { boardId, suggestionId });
+                alert('건의사항 정보가 올바르지 않습니다.');
+                return;
+            }
+
+            console.log('건의사항 클릭:', { boardId, suggestionId, isAdmin });
+
             if (isAdmin) {
                 // 관리자는 바로 상세보기
                 loadAndShowSuggestion(boardId, suggestionId);
@@ -1217,6 +1235,7 @@
             passwordModal.style.display = 'none';
             document.getElementById('suggestion-password').value = '';
             selectedSuggestionForPassword = null;
+            console.log('비밀번호 모달 닫음');
         }
 
         async function handlePasswordSubmit() {
@@ -1224,6 +1243,13 @@
             
             if (!password) {
                 alert('비밀번호를 입력해주세요.');
+                return;
+            }
+
+            // selectedSuggestionForPassword가 null인지 확인
+            if (!selectedSuggestionForPassword || !selectedSuggestionForPassword.boardId || !selectedSuggestionForPassword.suggestionId) {
+                alert('건의사항 정보가 올바르지 않습니다. 다시 시도해주세요.');
+                closePasswordModal();
                 return;
             }
 
@@ -1247,8 +1273,17 @@
         }
 
         async function loadAndShowSuggestion(boardId, suggestionId) {
+            // 매개변수 유효성 검사
+            if (!boardId || !suggestionId) {
+                console.error('loadAndShowSuggestion: 잘못된 매개변수:', { boardId, suggestionId });
+                alert('건의사항 정보가 올바르지 않습니다.');
+                return;
+            }
+
             try {
+                console.log('건의사항 로드 시도:', { boardId, suggestionId });
                 const suggestion = await loadSuggestionDetail(boardId, suggestionId);
+                console.log('건의사항 로드 성공:', suggestion);
                 showDetail(suggestion, boardId);
             } catch (error) {
                 alert(error.message || '건의사항을 불러오는 중 오류가 발생했습니다.');
