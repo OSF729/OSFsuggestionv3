@@ -825,6 +825,8 @@
         }
 
         function showDetail(suggestion, boardId) {
+            console.log('상세보기 표시, 관리자 상태:', isAdmin); // 디버깅용
+            
             mainBoard.style.display = 'none';
             boardView.style.display = 'none';
             writeForm.style.display = 'none';
@@ -843,15 +845,19 @@
             const statusSelect = document.getElementById('status-select');
             const adminActions = document.getElementById('admin-actions');
             
+            console.log('관리자 액션 요소:', adminActions); // 디버깅용
+            
             statusBadge.textContent = suggestion.status || '접수';
             statusBadge.className = `px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(suggestion.status || '접수')}`;
             
             if (isAdmin) {
+                console.log('관리자 모드 - UI 업데이트'); // 디버깅용
                 statusSelect.style.display = 'block';
                 statusSelect.value = suggestion.status || '접수';
                 statusBadge.style.display = 'none';
                 adminActions.style.display = 'flex';
             } else {
+                console.log('일반 사용자 모드 - UI 업데이트'); // 디버깅용
                 statusSelect.style.display = 'none';
                 statusBadge.style.display = 'inline-block';
                 adminActions.style.display = 'none';
@@ -950,10 +956,12 @@
                 document.getElementById('admin-btn').innerHTML = '🛡️ 관리자 로그아웃';
                 document.getElementById('admin-btn').className = 'px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800 hover:bg-red-200 transition-colors';
                 
+                console.log('관리자 로그인 성공, isAdmin:', isAdmin); // 디버깅용
                 alert('관리자 로그인 성공!');
                 
                 // 현재 화면에 따라 UI 업데이트
                 if (detailView.style.display === 'block') {
+                    console.log('상세보기 화면에서 관리자 버튼 활성화'); // 디버깅용
                     updateReplySection(currentSuggestion);
                     document.getElementById('status-select').style.display = 'block';
                     document.getElementById('status-badge').style.display = 'none';
