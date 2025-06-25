@@ -1052,11 +1052,9 @@
             passwordModal.style.display = 'none';
             document.getElementById('suggestion-password').value = '';
             
-            // selectedSuggestionForPassword를 즉시 null로 설정하지 않고 잠시 유지
-            setTimeout(() => {
-                selectedSuggestionForPassword = null;
-                console.log('selectedSuggestionForPassword 초기화됨');
-            }, 100);
+            // selectedSuggestionForPassword 즉시 초기화
+            selectedSuggestionForPassword = null;
+            console.log('selectedSuggestionForPassword 초기화됨');
             
             // 버튼 상태 복구
             const submitBtn = document.getElementById('password-submit');
@@ -1119,8 +1117,9 @@
                 console.log('저장된 비밀번호:', suggestion.password);
 
                 if (password === suggestion.password) {
+                    const targetBoardId = boardId; // 로컬 변수 사용
                     closePasswordModal();
-                    showDetail(suggestion, boardId);
+                    showDetail(suggestion, targetBoardId);
                 } else {
                     alert('비밀번호가 올바르지 않습니다.');
                     document.getElementById('suggestion-password').value = '';
