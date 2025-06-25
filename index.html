@@ -380,8 +380,7 @@
                     const count = querySnapshot.size;
                     document.getElementById(`${board}-count`).textContent = `${count}건`;
                 } catch (error) {
-                    // 컬렉션이 없는 경우 0건으로 표시
-                    console.log(`${board} 컬렉션이 아직 없습니다:`, error.message);
+                    console.error(`${board} 개수 로드 오류:`, error);
                     document.getElementById(`${board}-count`).textContent = '0건';
                 }
             }
@@ -389,8 +388,6 @@
 
         // 최근 건의사항 로드
         async function loadRecentSuggestions() {
-            const recentContainer = document.getElementById('recent-suggestions');
-            
             try {
                 const { db, collection, getDocs, query, orderBy } = window.firebaseDB;
                 const boards = ['team', 'company', 'complaint', 'product'];
@@ -409,8 +406,7 @@
                             });
                         });
                     } catch (boardError) {
-                        // 개별 컬렉션이 없는 경우는 무시하고 계속 진행
-                        console.log(`${board} 컬렉션이 아직 없습니다`);
+                        console.log(`${board} 컬렉션이 아직 없습니다:`, boardError);
                     }
                 }
 
@@ -422,6 +418,7 @@
                 });
                 const recentSuggestions = allSuggestions.slice(0, 5);
 
+                const recentContainer = document.getElementById('recent-suggestions');
                 if (recentSuggestions.length === 0) {
                     recentContainer.innerHTML = `
                         <div class="text-center py-8">
@@ -449,36 +446,15 @@
                     `).join('');
                 }
             } catch (error) {
-                console.log('최근 건의사항 로드:', error.message);
-                recentContainer.innerHTML = `
-                    <div class="text-center py-8">
-                        <div class="text-green-500 mb-2">✅</div>
-                        <p class="text-green-600 font-medium">Firebase 연결 성공!</p>
-                        <p class="text-gray-500">아직 건의사항이 없습니다</p>
-                        <p class="text-gray-400 text-sm">첫 번째 건의사항을 작성해보세요!</p>
-                    </div>
-                `;
+                console.error('최근 건의사항 로드 오류:', error);
             }
         }
 
         // 특정 게시판의 건의사항 로드
         async function loadBoardSuggestions(boardId) {
-            const suggestionsList = document.getElementById('suggestions-list');
-            
-            // 로딩 표시
-            suggestionsList.innerHTML = `
-                <div class="text-center py-8">
-                    <div class="loading mx-auto mb-2"></div>
-                    <p class="text-gray-500">건의사항을 불러오는 중...</p>
-                </div>
-            `;
-
             try {
                 const { db, collection, getDocs, query, orderBy } = window.firebaseDB;
-                
-                // 컬렉션이 존재하는지 먼저 확인
-                const collectionRef = collection(db, boardId);
-                const q = query(collectionRef, orderBy('createdAt', 'desc'));
+                const q = query(collection(db, boardId), orderBy('createdAt', 'desc'));
                 const querySnapshot = await getDocs(q);
                 
                 const suggestions = [];
@@ -491,10 +467,10 @@
 
                 document.getElementById('suggestion-count').textContent = suggestions.length;
                 
+                const suggestionsList = document.getElementById('suggestions-list');
                 if (suggestions.length === 0) {
                     suggestionsList.innerHTML = `
                         <div class="text-center py-8">
-                            <div class="text-blue-500 mb-2">📝</div>
                             <p class="text-gray-500">아직 건의사항이 없습니다</p>
                             <p class="text-gray-400 text-sm">첫 번째 건의사항을 작성해보세요!</p>
                         </div>
@@ -527,27 +503,12 @@
                 }
             } catch (error) {
                 console.error('게시판 건의사항 로드 오류:', error);
-                
-                // 빈 컬렉션이거나 권한 오류인 경우
-                if (error.code === 'permission-denied') {
-                    suggestionsList.innerHTML = `
-                        <div class="text-center py-8">
-                            <div class="text-red-500 mb-2">🔒</div>
-                            <p class="text-red-600 font-medium">권한이 없습니다</p>
-                            <p class="text-gray-500 text-sm">Firebase 보안 규칙을 확인해주세요</p>
-                        </div>
-                    `;
-                } else {
-                    // 일반적인 경우 - 빈 컬렉션으로 처리
-                    document.getElementById('suggestion-count').textContent = '0';
-                    suggestionsList.innerHTML = `
-                        <div class="text-center py-8">
-                            <div class="text-blue-500 mb-2">📝</div>
-                            <p class="text-gray-500">아직 건의사항이 없습니다</p>
-                            <p class="text-gray-400 text-sm">첫 번째 건의사항을 작성해보세요!</p>
-                        </div>
-                    `;
-                }
+                document.getElementById('suggestions-list').innerHTML = `
+                    <div class="text-center py-8">
+                        <p class="text-gray-500">건의사항을 불러오는 중 오류가 발생했습니다</p>
+                        <button onclick="loadBoardSuggestions('${boardId}')" class="mt-2 text-blue-500 hover:text-blue-700">다시 시도</button>
+                    </div>
+                `;
             }
         }
 
