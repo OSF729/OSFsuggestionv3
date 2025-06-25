@@ -453,21 +453,50 @@
         // 특정 게시판의 건의사항 로드
         async function loadBoardSuggestions(boardId) {
             try {
+                // 로딩 상태 표시
+                const suggestionsList = document.getElementById('suggestions-list');
+                suggestionsList.innerHTML = `
+                    <div class="text-center py-8">
+                        <div class="loading mx-auto"></div>
+                        <p class="text-gray-500 mt-2">건의사항을 불러오는 중...</p>
+                    </div>
+                `;
+
                 const { db, collection, getDocs, query, orderBy } = window.firebaseDB;
-                const q = query(collection(db, boardId), orderBy('createdAt', 'desc'));
-                const querySnapshot = await getDocs(q);
                 
-                const suggestions = [];
-                querySnapshot.forEach((doc) => {
-                    suggestions.push({
-                        id: doc.id,
-                        ...doc.data()
-                    });
-                });
+                // 재시도 로직 추가
+                let retryCount = 0;
+                const maxRetries = 3;
+                let suggestions = [];
+                
+                while (retryCount < maxRetries) {
+                    try {
+                        const q = query(collection(db, boardId), orderBy('createdAt', 'desc'));
+                        const querySnapshot = await getDocs(q);
+                        
+                        suggestions = [];
+                        querySnapshot.forEach((doc) => {
+                            suggestions.push({
+                                id: doc.id,
+                                ...doc.data()
+                            });
+                        });
+                        break; // 성공시 루프 탈출
+                    } catch (error) {
+                        retryCount++;
+                        console.warn(`Firebase 데이터 로드 시도 ${retryCount}/${maxRetries} 실패:`, error);
+                        
+                        if (retryCount >= maxRetries) {
+                            throw error;
+                        }
+                        
+                        // 잠시 대기 후 재시도
+                        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                    }
+                }
 
                 document.getElementById('suggestion-count').textContent = suggestions.length;
                 
-                const suggestionsList = document.getElementById('suggestions-list');
                 if (suggestions.length === 0) {
                     suggestionsList.innerHTML = `
                         <div class="text-center py-8">
@@ -512,8 +541,8 @@
                 console.error('게시판 건의사항 로드 오류:', error);
                 document.getElementById('suggestions-list').innerHTML = `
                     <div class="text-center py-8">
-                        <p class="text-gray-500">건의사항을 불러오는 중 오류가 발생했습니다</p>
-                        <button onclick="loadBoardSuggestions('${boardId}')" class="mt-2 text-blue-500 hover:text-blue-700">다시 시도</button>
+                        <p class="text-red-500">건의사항을 불러오는 중 오류가 발생했습니다</p>
+                        <button onclick="loadBoardSuggestions('${boardId}')" class="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">다시 시도</button>
                     </div>
                 `;
             }
@@ -542,21 +571,39 @@
         // 건의사항 상세 정보 로드 (수정된 부분)
         async function loadSuggestionDetail(boardId, suggestionId) {
             try {
-                const { db, doc, getDoc } = window.firebaseDB;
-                const docRef = doc(db, boardId, suggestionId);
-                const docSnap = await getDoc(docRef);
+                // 재시도 로직 추가
+                let retryCount = 0;
+                const maxRetries = 3;
                 
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    console.log('건의사항 상세 데이터:', data); // 디버깅용
-                    return { id: docSnap.id, ...data };
-                } else {
-                    console.error('문서를 찾을 수 없습니다:', boardId, suggestionId);
-                    throw new Error('건의사항을 찾을 수 없습니다');
+                while (retryCount < maxRetries) {
+                    try {
+                        const { db, doc, getDoc } = window.firebaseDB;
+                        const docRef = doc(db, boardId, suggestionId);
+                        const docSnap = await getDoc(docRef);
+                        
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            console.log('건의사항 상세 데이터:', data);
+                            return { id: docSnap.id, ...data };
+                        } else {
+                            console.error('문서를 찾을 수 없습니다:', boardId, suggestionId);
+                            throw new Error('건의사항을 찾을 수 없습니다');
+                        }
+                    } catch (error) {
+                        retryCount++;
+                        console.warn(`Firebase 연결 시도 ${retryCount}/${maxRetries} 실패:`, error);
+                        
+                        if (retryCount >= maxRetries) {
+                            throw error;
+                        }
+                        
+                        // 잠시 대기 후 재시도
+                        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                    }
                 }
             } catch (error) {
                 console.error('건의사항 상세 로드 오류:', error);
-                throw error;
+                throw new Error('건의사항을 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
             }
         }
 
@@ -1017,10 +1064,17 @@
             try {
                 console.log('비밀번호 확인 시도:', selectedSuggestionForPassword);
                 
-                const suggestion = await loadSuggestionDetail(
+                // 타임아웃 설정 (10초)
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('요청 시간이 초과되었습니다')), 10000)
+                );
+                
+                const loadPromise = loadSuggestionDetail(
                     selectedSuggestionForPassword.boardId, 
                     selectedSuggestionForPassword.suggestionId
                 );
+                
+                const suggestion = await Promise.race([loadPromise, timeoutPromise]);
 
                 console.log('로드된 건의사항:', suggestion);
                 console.log('입력된 비밀번호:', password);
@@ -1036,7 +1090,11 @@
                 }
             } catch (error) {
                 console.error('비밀번호 확인 오류:', error);
-                alert('건의사항을 불러오는 중 오류가 발생했습니다.');
+                if (error.message.includes('시간이 초과')) {
+                    alert('서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
+                } else {
+                    alert('건의사항을 불러오는 중 오류가 발생했습니다.');
+                }
                 closePasswordModal();
             } finally {
                 // 버튼 복구
