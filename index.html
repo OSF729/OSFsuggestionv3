@@ -688,7 +688,11 @@
 
             // 비밀번호 모달
             document.getElementById('password-cancel').addEventListener('click', closePasswordModal);
-            document.getElementById('password-submit').addEventListener('click', handlePasswordSubmit);
+            document.getElementById('password-submit').addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handlePasswordSubmit();
+            });
 
             // 엔터키 이벤트
             document.getElementById('admin-password').addEventListener('keypress', (e) => {
@@ -1014,7 +1018,13 @@
 
         // 수정된 건의사항 클릭 핸들러
         function handleSuggestionClick(boardId, suggestionId) {
-            console.log('건의사항 클릭:', boardId, suggestionId); // 디버깅용
+            console.log('건의사항 클릭:', boardId, suggestionId);
+            
+            if (!boardId || !suggestionId) {
+                console.error('Invalid parameters:', { boardId, suggestionId });
+                alert('건의사항 정보가 올바르지 않습니다.');
+                return;
+            }
             
             if (isAdmin) {
                 // 관리자는 바로 상세보기
@@ -1022,16 +1032,31 @@
             } else {
                 // 일반 사용자는 비밀번호 입력
                 selectedSuggestionForPassword = { boardId, suggestionId };
+                console.log('selectedSuggestionForPassword 설정:', selectedSuggestionForPassword);
+                
                 passwordModal.style.display = 'flex';
                 document.getElementById('password-modal-text').textContent = '건의사항을 열람하려면 비밀번호를 입력하세요.';
-                document.getElementById('suggestion-password').focus(); // 포커스 설정
+                
+                // 약간의 지연 후 포커스 설정
+                setTimeout(() => {
+                    const passwordInput = document.getElementById('suggestion-password');
+                    if (passwordInput) {
+                        passwordInput.focus();
+                    }
+                }, 100);
             }
         }
 
         function closePasswordModal() {
+            console.log('비밀번호 모달 닫기');
             passwordModal.style.display = 'none';
             document.getElementById('suggestion-password').value = '';
-            selectedSuggestionForPassword = null;
+            
+            // selectedSuggestionForPassword를 즉시 null로 설정하지 않고 잠시 유지
+            setTimeout(() => {
+                selectedSuggestionForPassword = null;
+                console.log('selectedSuggestionForPassword 초기화됨');
+            }, 100);
             
             // 버튼 상태 복구
             const submitBtn = document.getElementById('password-submit');
@@ -1041,6 +1066,9 @@
 
         // 수정된 비밀번호 확인 핸들러
         async function handlePasswordSubmit() {
+            console.log('비밀번호 제출 시작');
+            console.log('현재 selectedSuggestionForPassword:', selectedSuggestionForPassword);
+            
             const password = document.getElementById('suggestion-password').value.trim();
             
             if (!password) {
@@ -1055,6 +1083,13 @@
                 return;
             }
 
+            if (!selectedSuggestionForPassword.boardId || !selectedSuggestionForPassword.suggestionId) {
+                console.error('Invalid selectedSuggestionForPassword:', selectedSuggestionForPassword);
+                alert('건의사항 정보가 올바르지 않습니다. 다시 시도해주세요.');
+                closePasswordModal();
+                return;
+            }
+
             // 버튼 비활성화
             const submitBtn = document.getElementById('password-submit');
             const originalText = submitBtn.textContent;
@@ -1064,15 +1099,18 @@
             try {
                 console.log('비밀번호 확인 시도:', selectedSuggestionForPassword);
                 
+                // 로컬 변수에 값 복사 (참조 유지)
+                const boardId = selectedSuggestionForPassword.boardId;
+                const suggestionId = selectedSuggestionForPassword.suggestionId;
+                
+                console.log('사용할 값들:', { boardId, suggestionId });
+                
                 // 타임아웃 설정 (10초)
                 const timeoutPromise = new Promise((_, reject) => 
                     setTimeout(() => reject(new Error('요청 시간이 초과되었습니다')), 10000)
                 );
                 
-                const loadPromise = loadSuggestionDetail(
-                    selectedSuggestionForPassword.boardId, 
-                    selectedSuggestionForPassword.suggestionId
-                );
+                const loadPromise = loadSuggestionDetail(boardId, suggestionId);
                 
                 const suggestion = await Promise.race([loadPromise, timeoutPromise]);
 
@@ -1082,11 +1120,13 @@
 
                 if (password === suggestion.password) {
                     closePasswordModal();
-                    showDetail(suggestion, selectedSuggestionForPassword.boardId);
+                    showDetail(suggestion, boardId);
                 } else {
                     alert('비밀번호가 올바르지 않습니다.');
                     document.getElementById('suggestion-password').value = '';
-                    document.getElementById('suggestion-password').focus();
+                    setTimeout(() => {
+                        document.getElementById('suggestion-password').focus();
+                    }, 100);
                 }
             } catch (error) {
                 console.error('비밀번호 확인 오류:', error);
