@@ -232,29 +232,33 @@
 
             <!-- 상세보기 화면 -->
             <div id="detail-view" style="display: none;">
-                <div class="flex items-center justify-between mb-6">
-                    <button id="detail-back-btn" class="text-blue-500 hover:text-blue-700 font-medium">← 목록으로</button>
-                    <div class="flex items-center space-x-3">
-                        <select id="status-select" class="border border-gray-300 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" style="display: none;">
-                            <option value="접수">접수</option>
-                            <option value="검토중">검토중</option>
-                            <option value="처리중">처리중</option>
-                            <option value="개발검토">개발검토</option>
-                            <option value="완료">완료</option>
-                            <option value="답변완료">답변완료</option>
-                        </select>
-                        <span id="status-badge" class="px-3 py-1 rounded-full text-sm font-medium">접수</span>
-                        
-                        <!-- 관리자 액션 버튼들 -->
-                        <div id="admin-actions" style="display: none;" class="flex items-center space-x-2">
-                            <button id="edit-suggestion-btn" class="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm flex items-center space-x-1 transition-colors">
-                                <span>✏️</span>
-                                <span>수정</span>
-                            </button>
-                            <button id="delete-suggestion-btn" class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm flex items-center space-x-1 transition-colors">
-                                <span>🗑️</span>
-                                <span>삭제</span>
-                            </button>
+                <!-- 헤더 영역 수정 -->
+                <div class="bg-white rounded-lg shadow-md mb-6 p-4">
+                    <div class="flex items-center justify-between">
+                        <button id="detail-back-btn" class="text-blue-500 hover:text-blue-700 font-medium">← 목록으로</button>
+                        <div class="flex items-center space-x-3">
+                            <select id="status-select" class="border border-gray-300 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" style="display: none;">
+                                <option value="접수">접수</option>
+                                <option value="검토중">검토중</option>
+                                <option value="처리중">처리중</option>
+                                <option value="개발검토">개발검토</option>
+                                <option value="완료">완료</option>
+                                <option value="답변완료">답변완료</option>
+                            </select>
+                            <span id="status-badge" class="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">접수</span>
+                            
+                            <!-- 관리자 액션 버튼들 - 더 명확하게 표시 -->
+                            <div id="admin-actions" style="display: none;" class="flex items-center space-x-2 ml-4 border-l pl-4">
+                                <span class="text-xs text-gray-500">관리자:</span>
+                                <button id="edit-suggestion-btn" class="px-3 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm flex items-center space-x-1 transition-colors shadow-md">
+                                    <span>✏️</span>
+                                    <span>수정</span>
+                                </button>
+                                <button id="delete-suggestion-btn" class="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm flex items-center space-x-1 transition-colors shadow-md">
+                                    <span>🗑️</span>
+                                    <span>삭제</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -825,7 +829,8 @@
         }
 
         function showDetail(suggestion, boardId) {
-            console.log('상세보기 표시, 관리자 상태:', isAdmin); // 디버깅용
+            console.log('상세보기 표시, 관리자 상태:', isAdmin);
+            console.log('현재 건의사항:', suggestion);
             
             mainBoard.style.display = 'none';
             boardView.style.display = 'none';
@@ -840,31 +845,49 @@
             document.getElementById('detail-date').textContent = formatDate(suggestion.createdAt);
             document.getElementById('detail-content').innerHTML = `<p class="text-gray-700 leading-relaxed whitespace-pre-wrap">${suggestion.content}</p>`;
 
-            // 상태 업데이트
+            // 상태 및 관리자 버튼 업데이트
+            updateDetailHeader(suggestion);
+
+            // 답변 섹션 업데이트
+            updateReplySection(suggestion);
+        }
+
+        // 상세보기 헤더 업데이트 함수 분리
+        function updateDetailHeader(suggestion) {
             const statusBadge = document.getElementById('status-badge');
             const statusSelect = document.getElementById('status-select');
             const adminActions = document.getElementById('admin-actions');
             
-            console.log('관리자 액션 요소:', adminActions); // 디버깅용
+            console.log('헤더 업데이트 - 관리자 상태:', isAdmin);
+            console.log('관리자 액션 요소:', adminActions);
             
+            // 상태 표시
             statusBadge.textContent = suggestion.status || '접수';
             statusBadge.className = `px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(suggestion.status || '접수')}`;
             
             if (isAdmin) {
-                console.log('관리자 모드 - UI 업데이트'); // 디버깅용
+                console.log('관리자 모드 활성화');
                 statusSelect.style.display = 'block';
                 statusSelect.value = suggestion.status || '접수';
                 statusBadge.style.display = 'none';
-                adminActions.style.display = 'flex';
+                
+                // 관리자 버튼 강제 표시
+                if (adminActions) {
+                    adminActions.style.display = 'flex';
+                    adminActions.style.visibility = 'visible';
+                    console.log('관리자 버튼 표시 완료');
+                } else {
+                    console.error('admin-actions 요소를 찾을 수 없음');
+                }
             } else {
-                console.log('일반 사용자 모드 - UI 업데이트'); // 디버깅용
+                console.log('일반 사용자 모드');
                 statusSelect.style.display = 'none';
                 statusBadge.style.display = 'inline-block';
-                adminActions.style.display = 'none';
+                
+                if (adminActions) {
+                    adminActions.style.display = 'none';
+                }
             }
-
-            // 답변 섹션 업데이트
-            updateReplySection(suggestion);
         }
 
         function updateReplySection(suggestion) {
@@ -930,11 +953,10 @@
                 document.getElementById('admin-btn').className = 'px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors';
                 
                 // 현재 화면이 상세보기면 답변 관련 UI 업데이트
-                if (detailView.style.display === 'block') {
+                if (detailView.style.display === 'block' && currentSuggestion) {
+                    console.log('관리자 로그아웃 - 상세보기 UI 업데이트');
+                    updateDetailHeader(currentSuggestion);
                     updateReplySection(currentSuggestion);
-                    document.getElementById('status-select').style.display = 'none';
-                    document.getElementById('status-badge').style.display = 'inline-block';
-                    document.getElementById('admin-actions').style.display = 'none';
                 }
             } else {
                 // 로그인 모달 표시
